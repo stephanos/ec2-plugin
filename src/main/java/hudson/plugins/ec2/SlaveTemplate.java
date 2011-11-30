@@ -35,12 +35,14 @@ import java.util.Set;
  */
 public class SlaveTemplate implements Describable<SlaveTemplate> {
     public final String ami;
+    public final String instance;
     public final String description;
     public final String remoteFS;
     public final String sshPort;
     public final InstanceType type;
     public final String labels;
     public final String initScript;
+
     public final String userData;
     public final String numExecutors;
     public final String remoteAdmin;
@@ -51,8 +53,9 @@ public class SlaveTemplate implements Describable<SlaveTemplate> {
     private transient /*almost final*/ Set<LabelAtom> labelSet;
 
     @DataBoundConstructor
-    public SlaveTemplate(String ami, String remoteFS, String sshPort, InstanceType type, String labelString, String description, String initScript, String userData, String numExecutors, String remoteAdmin, String rootCommandPrefix, String jvmopts) {
+    public SlaveTemplate(String ami, String instance, String remoteFS, String sshPort, InstanceType type, String labelString, String description, String initScript, String userData, String numExecutors, String remoteAdmin, String rootCommandPrefix, String jvmopts) {
         this.ami = ami;
+        this.instance = instance;
         this.remoteFS = remoteFS;
         this.sshPort = sshPort;
         this.type = type;
@@ -66,7 +69,7 @@ public class SlaveTemplate implements Describable<SlaveTemplate> {
         this.jvmopts = jvmopts;
         readResolve(); // initialize
     }
-    
+
     public EC2Cloud getParent() {
         return parent;
     }
@@ -101,11 +104,11 @@ public class SlaveTemplate implements Describable<SlaveTemplate> {
     public String getRootCommandPrefix() {
         return rootCommandPrefix;
     }
-    
+
     public Set getLabelSet(){
     	return labelSet;
     }
-    
+
     /**
      * Does this contain the given label?
      *
@@ -130,7 +133,14 @@ public class SlaveTemplate implements Describable<SlaveTemplate> {
             KeyPairInfo keyPair = parent.getPrivateKey().find(ec2);
             if(keyPair==null)
                 throw new EC2Exception("No matching keypair found on EC2. Is the EC2 private key a valid one?");
-            Instance inst = ec2.runInstances(ami, 1, 1, Collections.<String>emptyList(), userData, keyPair.getKeyName(), type).getInstances().get(0);
+            Instance inst;
+            if(instance == null)
+                inst = ec2.runInstances(ami, 1, 1, Collections.<String>emptyList(), userData, keyPair.getKeyName(), type).getInstances().get(0);
+            else {
+                List<String> instances = Collections.singletonList(instance);
+                ec2.startInstances(instances);
+                inst = ec2.describeInstances(instances).get(0).getInstances().get(0);
+            }
             return newSlave(inst);
         } catch (FormException e) {
             throw new AssertionError(); // we should have discovered all configuration issues upfront

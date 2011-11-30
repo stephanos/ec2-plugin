@@ -1,8 +1,6 @@
 package hudson.plugins.ec2;
 
-import com.xerox.amazonws.ec2.EC2Exception;
-import com.xerox.amazonws.ec2.InstanceType;
-import com.xerox.amazonws.ec2.Jec2;
+import com.xerox.amazonws.ec2.*;
 import hudson.model.Computer;
 import hudson.model.Descriptor.FormException;
 import hudson.model.Hudson;
@@ -22,7 +20,7 @@ import org.kohsuke.stapler.DataBoundConstructor;
 
 /**
  * Slave running on EC2.
- * 
+ *
  * @author Kohsuke Kawaguchi
  */
 public final class EC2Slave extends Slave {
@@ -90,15 +88,26 @@ public final class EC2Slave extends Slave {
      * Terminates the instance in EC2.
      */
     public void terminate() {
+        Jec2 ec2 = null;
+        List<String> instances = Collections.singletonList(getInstanceId());
         try {
-            Jec2 ec2 = EC2Cloud.get().connect();
-            ec2.terminateInstances(Collections.singletonList(getInstanceId()));
+            ec2 = EC2Cloud.get().connect();
+            ec2.terminateInstances(instances);
             LOGGER.info("Terminated EC2 instance: "+getInstanceId());
             Hudson.getInstance().removeNode(this);
-        } catch (EC2Exception e) {
+        } catch (Exception e) {
             LOGGER.log(Level.WARNING,"Failed to terminate EC2 instance: "+getInstanceId(),e);
-        } catch (IOException e) {
-            LOGGER.log(Level.WARNING,"Failed to terminate EC2 instance: "+getInstanceId(),e);
+        } finally {
+            if (ec2 != null) {
+                try {
+                    // if termination failed, maybe it was protected? just try to stop it then.
+                    ec2.stopInstances(instances, false);
+                    LOGGER.info("Terminated EC2 instance: "+getInstanceId());
+                    Hudson.getInstance().removeNode(this);
+                } catch (Exception e) {
+                    LOGGER.log(Level.WARNING,"Failed to terminate EC2 instance: "+getInstanceId(),e);
+                }
+            }
         }
     }
 
